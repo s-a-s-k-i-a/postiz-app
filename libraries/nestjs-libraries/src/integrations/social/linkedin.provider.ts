@@ -35,10 +35,6 @@ export class LinkedinProvider extends SocialAbstract implements SocialProvider {
     'openid',
     'profile',
     'w_member_social',
-    'r_basicprofile',
-    'rw_organization_admin',
-    'w_organization_social',
-    'r_organization_social',
   ];
   override maxConcurrentJob = 2;
   refreshWait = true;
@@ -115,14 +111,6 @@ export class LinkedinProvider extends SocialAbstract implements SocialProvider {
       })
     ).json();
 
-    const { vanityName } = await (
-      await fetch('https://api.linkedin.com/v2/me', {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      })
-    ).json();
-
     const {
       name,
       sub: id,
@@ -135,6 +123,12 @@ export class LinkedinProvider extends SocialAbstract implements SocialProvider {
       })
     ).json();
 
+    // vanityName comes from /v2/me, which requires 'r_basicprofile'. That scope
+    // is no longer requested (it belongs to the Community Management API product,
+    // which cannot coexist with 'openid' on the same LinkedIn app), so we fetch
+    // it best-effort and fall back gracefully when the app doesn't have it.
+    const vanityName = await this.fetchVanityName(accessToken);
+
     return {
       id,
       accessToken,
@@ -142,8 +136,31 @@ export class LinkedinProvider extends SocialAbstract implements SocialProvider {
       expiresIn: expires_in,
       name,
       picture: picture || '',
-      username: vanityName,
+      username: vanityName || name,
     };
+  }
+
+  // Best-effort lookup of the member's vanityName (public profile handle).
+  // /v2/me requires 'r_basicprofile', which apps using "Sign In with LinkedIn
+  // using OpenID Connect" may not have — in that case we return undefined
+  // instead of failing the whole connection.
+  private async fetchVanityName(
+    accessToken: string
+  ): Promise<string | undefined> {
+    try {
+      const response = await fetch('https://api.linkedin.com/v2/me', {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+      if (!response.ok) {
+        return undefined;
+      }
+      const { vanityName } = await response.json();
+      return vanityName;
+    } catch (err) {
+      return undefined;
+    }
   }
 
   async generateAuthUrl() {
@@ -151,7 +168,7 @@ export class LinkedinProvider extends SocialAbstract implements SocialProvider {
     const codeVerifier = makeId(30);
     const url = `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${
       process.env.LINKEDIN_CLIENT_ID
-    }&prompt=none&redirect_uri=${encodeURIComponent(
+    }&redirect_uri=${encodeURIComponent(
       `${process.env.FRONTEND_URL}/integrations/social/linkedin`
     )}&state=${state}&scope=${encodeURIComponent(this.scopes.join(' '))}`;
     return {
@@ -207,13 +224,8 @@ export class LinkedinProvider extends SocialAbstract implements SocialProvider {
       })
     ).json();
 
-    const { vanityName } = await (
-      await fetch('https://api.linkedin.com/v2/me', {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      })
-    ).json();
+    // Best-effort: apps without 'r_basicprofile' can't read the vanityName.
+    const vanityName = await this.fetchVanityName(accessToken);
 
     return {
       id,
@@ -222,7 +234,7 @@ export class LinkedinProvider extends SocialAbstract implements SocialProvider {
       expiresIn,
       name,
       picture,
-      username: vanityName,
+      username: vanityName || name,
     };
   }
 
