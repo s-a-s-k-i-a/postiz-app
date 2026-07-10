@@ -1,6 +1,6 @@
 'use client';
 
-import React, { FC, useCallback, useMemo } from 'react';
+import React, { FC, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFetch } from '@gitroom/helpers/utils/custom.fetch';
 import useSWR from 'swr';
 import { useUser } from '@gitroom/frontend/components/layout/user.context';
@@ -10,9 +10,11 @@ export const OrganizationSelector: FC<{ asOpenSelect?: boolean }> = ({
 }) => {
   const fetch = useFetch();
   const user = useUser();
+  const [isOpen, setIsOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
   const load = useCallback(async () => {
     return await (await fetch('/user/organizations')).json();
-  }, []);
+  }, [fetch]);
   const { isLoading, data } = useSWR('organizations', load, {
     revalidateIfStale: false,
     revalidateOnFocus: false,
@@ -22,12 +24,18 @@ export const OrganizationSelector: FC<{ asOpenSelect?: boolean }> = ({
   });
   const current = useMemo(() => {
     return data?.find((d: any) => d.id === user?.orgId);
-  }, [data]);
+  }, [data, user?.orgId]);
   const withoutCurrent = useMemo(() => {
     return data?.filter((d: any) => d.id !== user?.orgId);
-  }, [current, data]);
+  }, [data, user?.orgId]);
+  const organizations = useMemo(() => {
+    return current ? [current, ...(withoutCurrent || [])] : data;
+  }, [current, data, withoutCurrent]);
   const changeOrg = useCallback(
     (org: { name: string; id: string }) => async () => {
+      if (!asOpenSelect) {
+        setIsOpen(false);
+      }
       await fetch('/user/change-org', {
         method: 'POST',
         body: JSON.stringify({
@@ -36,20 +44,56 @@ export const OrganizationSelector: FC<{ asOpenSelect?: boolean }> = ({
       });
       window.location.reload();
     },
-    []
+    [asOpenSelect, fetch]
   );
+  useEffect(() => {
+    if (asOpenSelect || !isOpen) {
+      return;
+    }
+
+    const onMouseDown = (event: MouseEvent) => {
+      if (ref.current && !ref.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', onMouseDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onMouseDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [asOpenSelect, isOpen]);
   if (isLoading || (!isLoading && data?.length === 1)) {
     return null;
   }
   return (
     <>
       <div className="hover:text-newTextColor">
-        <div className="group text-[12px] relative">
+        <div className="text-[12px] relative" ref={ref}>
           {asOpenSelect && (
             <div className="bg-btnPrimary !flex !relative max-w-[500px] mx-auto py-[12px] px-[12px]">Select Organization</div>
           )}
           {!asOpenSelect && (
-            <div className="flex items-center">
+            <div
+              className="flex items-center cursor-pointer"
+              role="button"
+              tabIndex={0}
+              aria-haspopup="menu"
+              aria-expanded={isOpen}
+              onClick={() => setIsOpen((open) => !open)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  setIsOpen((open) => !open);
+                }
+              }}
+            >
               <svg
                 className={user?.tier.current === 'FREE' ? 'animate-bounce drop-shadow-glow': ''}
                 width="24"
@@ -68,12 +112,20 @@ export const OrganizationSelector: FC<{ asOpenSelect?: boolean }> = ({
           {data?.length > 1 && (
             <div
               className={clsx(
-                'hidden py-[12px] px-[12px] group-hover:flex absolute top-[100%] end-0 bg-third border-tableBorder border gap-[12px] cursor-pointer flex-col',
+                'py-[12px] px-[12px] absolute top-[100%] end-0 z-[200] bg-third border-tableBorder border gap-[12px] cursor-pointer flex-col',
                 asOpenSelect ? '!flex !relative max-w-[500px] mx-auto mb-[10px]' : '',
+                !asOpenSelect ? (isOpen ? 'flex' : 'hidden') : '',
               )}
+              role="menu"
             >
-              {data?.map((org: { name: string; id: string }) => (
-                <div key={org.id} onClick={changeOrg(org)}>
+              {organizations?.map((org: { name: string; id: string }) => (
+                <div
+                  key={org.id}
+                  onClick={changeOrg(org)}
+                  className={clsx(org.id === user?.orgId ? 'font-bold' : '')}
+                  role="menuitem"
+                  aria-current={org.id === user?.orgId ? 'true' : undefined}
+                >
                   {org.name}
                 </div>
               ))}
