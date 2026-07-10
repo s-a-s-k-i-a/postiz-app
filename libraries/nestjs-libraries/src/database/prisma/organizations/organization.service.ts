@@ -3,6 +3,7 @@ import { Injectable } from '@nestjs/common';
 import { OrganizationRepository } from '@gitroom/nestjs-libraries/database/prisma/organizations/organization.repository';
 import { NotificationService } from '@gitroom/nestjs-libraries/database/prisma/notifications/notification.service';
 import { AddTeamMemberDto } from '@gitroom/nestjs-libraries/dtos/settings/add.team.member.dto';
+import { UpdateOrganizationDto } from '@gitroom/nestjs-libraries/dtos/settings/update.organization.dto';
 import { AuthService } from '@gitroom/helpers/auth/auth.service';
 import dayjs from 'dayjs';
 import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
@@ -129,5 +130,12 @@ export class OrganizationService {
       orgId,
       shortlink
     );
+  }
+
+  updateOrganization(orgId: string, body: UpdateOrganizationDto) {
+    return this._organizationRepository.updateOrganization(orgId, {
+      ...(body.name !== undefined ? { name: body.name } : {}),
+      ...(body.logo !== undefined ? { logo: body.logo } : {}),
+    });
   }
 }

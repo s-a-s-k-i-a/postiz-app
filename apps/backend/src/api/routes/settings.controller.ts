@@ -1,10 +1,11 @@
-import { Body, Controller, Delete, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Put } from '@nestjs/common';
 import { GetOrgFromRequest } from '@gitroom/nestjs-libraries/user/org.from.request';
 import { Organization } from '@prisma/client';
 import { CheckPolicies } from '@gitroom/backend/services/auth/permissions/permissions.ability';
 import { OrganizationService } from '@gitroom/nestjs-libraries/database/prisma/organizations/organization.service';
 import { AddTeamMemberDto } from '@gitroom/nestjs-libraries/dtos/settings/add.team.member.dto';
 import { ShortlinkPreferenceDto } from '@gitroom/nestjs-libraries/dtos/settings/shortlink-preference.dto';
+import { UpdateOrganizationDto } from '@gitroom/nestjs-libraries/dtos/settings/update.organization.dto';
 import { ApiTags } from '@nestjs/swagger';
 import { AuthorizationActions, Sections } from '@gitroom/backend/services/auth/permissions/permission.exception.class';
 
@@ -63,5 +64,14 @@ export class SettingsController {
       org.id,
       body.shortlink
     );
+  }
+
+  @Put('/organization')
+  @CheckPolicies([AuthorizationActions.Create, Sections.ADMIN])
+  async updateOrganization(
+    @GetOrgFromRequest() org: Organization,
+    @Body() body: UpdateOrganizationDto
+  ) {
+    return this._organizationService.updateOrganization(org.id, body);
   }
 }
