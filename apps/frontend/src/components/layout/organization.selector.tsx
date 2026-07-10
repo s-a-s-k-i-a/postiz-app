@@ -56,7 +56,10 @@ const getInitials = (name: string) => {
     return 'O';
   }
 
-  return words.map((word) => word[0]).join('').toUpperCase();
+  return words
+    .map((word) => word[0])
+    .join('')
+    .toUpperCase();
 };
 
 const getColor = (name: string) => {
@@ -86,6 +89,10 @@ export const OrganizationSelector: FC<{ asOpenSelect?: boolean }> = ({
     return current ? [current, ...(withoutCurrent || [])] : data;
   }, [current, data, withoutCurrent]);
 
+  const organizationCount = organizations?.length || 0;
+  const shouldScrollOrganizations = organizationCount > 5;
+  const visibleChipWidth = Math.max(0, organizationCount * 24 + 20);
+
   const changeOrg = useCallback(
     (org: OrganizationWithLogo) => async () => {
       if (org.id === user?.orgId) {
@@ -100,17 +107,18 @@ export const OrganizationSelector: FC<{ asOpenSelect?: boolean }> = ({
       });
       window.location.reload();
     },
-    [fetch, user?.orgId]
+    [fetch, user?.orgId],
   );
 
   const handleKeyDown = useCallback(
-    (org: OrganizationWithLogo) => (event: React.KeyboardEvent<HTMLButtonElement>) => {
-      if (event.key === 'Enter' || event.key === ' ') {
-        event.preventDefault();
-        changeOrg(org)();
-      }
-    },
-    [changeOrg]
+    (org: OrganizationWithLogo) =>
+      (event: React.KeyboardEvent<HTMLButtonElement>) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          changeOrg(org)();
+        }
+      },
+    [changeOrg],
   );
 
   if (isLoading || (!isLoading && data?.length === 1)) {
@@ -152,55 +160,65 @@ export const OrganizationSelector: FC<{ asOpenSelect?: boolean }> = ({
 
   return (
     <>
-      <div
-        className={clsx(
-          'flex items-center max-w-[112px] scroll-smooth',
-          (organizations?.length || 0) > 3 &&
-            'overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'
-        )}
-      >
-        <div className="flex items-center py-[2px] pe-[2px]">
-          {organizations?.map((org, index) => {
-            const isActive = org.id === user?.orgId;
-            const label = getOrganizationLabel(org.name);
+      <div className="relative overflow-visible">
+        <div
+          className={clsx(
+            'flex items-center scroll-smooth px-[6px] py-[8px]',
+            shouldScrollOrganizations
+              ? 'max-w-[176px] overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'
+              : 'overflow-visible',
+          )}
+          style={
+            shouldScrollOrganizations
+              ? undefined
+              : { width: `${visibleChipWidth}px` }
+          }
+        >
+          <div className="flex items-center overflow-visible py-[3px] pe-[4px]">
+            {organizations?.map((org, index) => {
+              const isActive = org.id === user?.orgId;
+              const label = getOrganizationLabel(org.name);
 
-            return (
-              <button
-                key={org.id}
-                type="button"
-                title={label}
-                role="button"
-                aria-label={`Switch to organization ${label}`}
-                aria-current={isActive ? 'true' : undefined}
-                onClick={changeOrg(org)}
-                onKeyDown={handleKeyDown(org)}
-                className={clsx(
-                  'relative flex h-[32px] w-[32px] shrink-0 items-center justify-center overflow-hidden rounded-full border border-tableBorder text-[11px] font-bold text-white shadow-md transition-all duration-150 focus-visible:ring-2 focus-visible:ring-btnPrimary',
-                  index > 0 && '-ms-2',
-                  isActive
-                    ? 'opacity-100 grayscale-0 ring-2 ring-btnPrimary ring-offset-2 ring-offset-newBgColorInner'
-                    : 'opacity-60 grayscale hover:opacity-90 hover:grayscale-0',
-                  !org.logo && getColor(org.name)
-                )}
-                style={{
-                  zIndex: isActive
-                    ? (organizations?.length || 0) + 10
-                    : (organizations?.length || 0) - index,
-                }}
-              >
-                {org.logo ? (
-                  <img
-                    src={org.logo}
-                    alt=""
-                    className="h-full w-full rounded-full object-cover"
-                  />
-                ) : (
-                  <span>{getInitials(org.name)}</span>
-                )}
-              </button>
-            );
-          })}
+              return (
+                <button
+                  key={org.id}
+                  type="button"
+                  title={label}
+                  aria-label={`Switch to organization ${label}`}
+                  aria-current={isActive ? 'true' : undefined}
+                  onClick={changeOrg(org)}
+                  onKeyDown={handleKeyDown(org)}
+                  className={clsx(
+                    'relative flex h-[32px] w-[32px] shrink-0 origin-center transform-gpu items-center justify-center overflow-hidden rounded-full border border-tableBorder text-[11px] font-bold text-white shadow-md transition-all duration-150 ease-out hover:!z-[100] hover:scale-[1.15] focus-visible:!z-[100] focus-visible:scale-[1.15] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-btnPrimary',
+                    index > 0 && '-ms-2',
+                    isActive
+                      ? 'opacity-100 grayscale-0 ring-2 ring-btnPrimary ring-offset-2 ring-offset-newBgColorInner'
+                      : 'opacity-60 grayscale hover:opacity-100 hover:grayscale-0 focus-visible:opacity-100 focus-visible:grayscale-0',
+                    !org.logo && getColor(org.name),
+                  )}
+                  style={{
+                    zIndex: isActive
+                      ? organizationCount + 10
+                      : organizationCount - index,
+                  }}
+                >
+                  {org.logo ? (
+                    <img
+                      src={org.logo}
+                      alt=""
+                      className="h-full w-full rounded-full object-cover"
+                    />
+                  ) : (
+                    <span>{getInitials(org.name)}</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
         </div>
+        {shouldScrollOrganizations && (
+          <div className="pointer-events-none absolute inset-y-[8px] right-0 z-[120] w-[28px] bg-gradient-to-l from-newBgColorInner to-transparent" />
+        )}
       </div>
       <div className="w-[1px] h-[20px] bg-blockSeparator" />
     </>
