@@ -3,7 +3,6 @@
 import React, {
   ChangeEvent,
   DragEvent,
-  FormEvent,
   KeyboardEvent,
   useCallback,
   useEffect,
@@ -186,6 +185,10 @@ export const OrganizationSettingsComponent = () => {
   }, [logoUploader, toaster, t]);
 
   const submit = useCallback(async () => {
+    if (saving || uploadingLogo) {
+      return;
+    }
+
     if (!currentOrganization || name.trim().length < 2) {
       toaster.show(
         t(
@@ -198,16 +201,29 @@ export const OrganizationSettingsComponent = () => {
     }
 
     setSaving(true);
+    const updateFailedMessage = t(
+      'organization_update_failed',
+      'Organization update failed. Please try again.',
+    );
+
     try {
-      const updatedOrganization = (await (
-        await fetch('/settings/organization', {
-          method: 'PUT',
-          body: JSON.stringify({
-            name: name.trim(),
-            logo,
-          }),
-        })
-      ).json()) as Pick<OrganizationWithLogo, 'id' | 'name' | 'logo'>;
+      const response = await fetch('/settings/organization', {
+        method: 'PUT',
+        body: JSON.stringify({
+          name: name.trim(),
+          logo,
+        }),
+      });
+
+      if (!response.ok) {
+        toaster.show(updateFailedMessage, 'warning');
+        return;
+      }
+
+      const updatedOrganization = (await response.json()) as Pick<
+        OrganizationWithLogo,
+        'id' | 'name' | 'logo'
+      >;
 
       await mutate((organizations) => {
         return organizations?.map((org) =>
@@ -221,13 +237,30 @@ export const OrganizationSettingsComponent = () => {
         t('organization_updated', 'Organization updated'),
         'success',
       );
+    } catch (error) {
+      toaster.show(updateFailedMessage, 'warning');
     } finally {
       setSaving(false);
     }
-  }, [currentOrganization, fetch, logo, mutate, name, swr, toaster, t]);
+  }, [
+    currentOrganization,
+    fetch,
+    logo,
+    mutate,
+    name,
+    saving,
+    swr,
+    toaster,
+    t,
+    uploadingLogo,
+  ]);
 
-  const handleSubmit = useCallback(
-    (event: FormEvent<HTMLFormElement>) => {
+  const onNameKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLInputElement>) => {
+      if (event.key !== 'Enter') {
+        return;
+      }
+
       event.preventDefault();
       submit();
     },
@@ -239,11 +272,13 @@ export const OrganizationSettingsComponent = () => {
   }
 
   return (
-    <form
-      onSubmit={handleSubmit}
+    <section
+      aria-labelledby="organization-settings-heading"
       className="my-[16px] mt-[16px] bg-sixth border-fifth border rounded-[4px] p-[24px] flex flex-col gap-[24px]"
     >
-      <div className="mt-[4px]">{t('organization', 'Organization')}</div>
+      <div id="organization-settings-heading" className="mt-[4px]">
+        {t('organization', 'Organization')}
+      </div>
       <div className="flex flex-col gap-[16px] md:flex-row md:items-start">
         <div className="relative h-[120px] w-[120px] shrink-0">
           <div
@@ -328,6 +363,7 @@ export const OrganizationSettingsComponent = () => {
               id="organization-name"
               value={name}
               onChange={(event) => setName(event.target.value)}
+              onKeyDown={onNameKeyDown}
               className="bg-newBgColorInner h-[42px] border-newTableBorder border rounded-[8px] text-textColor placeholder-textColor px-[16px] text-[14px]"
               placeholder={t('organization_name', 'Organization name')}
             />
@@ -335,10 +371,15 @@ export const OrganizationSettingsComponent = () => {
         </div>
       </div>
       <div className="flex flex-wrap gap-[12px]">
-        <Button type="submit" loading={saving} disabled={uploadingLogo}>
+        <Button
+          type="button"
+          loading={saving}
+          disabled={uploadingLogo || saving}
+          onClick={submit}
+        >
           {t('save', 'Save')}
         </Button>
       </div>
-    </form>
+    </section>
   );
 };
