@@ -419,4 +419,21 @@ export class OrganizationRepository {
       },
     });
   }
+
+  updateOrganization(
+    orgId: string,
+    data: { name?: string; logo?: string | null }
+  ) {
+    return this._organization.model.organization.update({
+      where: {
+        id: orgId,
+      },
+      data,
+      select: {
+        id: true,
+        name: true,
+        logo: true,
+      },
+    });
+  }
 }

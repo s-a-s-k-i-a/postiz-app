@@ -171,15 +171,18 @@ export const Pagination: FC<{
 };
 export const ShowMediaBoxModal: FC = () => {
   const [showModal, setShowModal] = useState(false);
+  const [type, setType] = useState<'image' | 'video' | undefined>();
   const [callBack, setCallBack] =
     useState<(params: { id: string; path: string }[]) => void | undefined>();
   const closeModal = useCallback(() => {
     setShowModal(false);
+    setType(undefined);
     setCallBack(undefined);
   }, []);
   useEffect(() => {
-    showModalEmitter.on('show-modal', (cCallback) => {
+    showModalEmitter.on('show-modal', (cCallback, mediaType) => {
       setShowModal(true);
+      setType(mediaType);
       setCallBack(() => cCallback);
     });
     return () => {
@@ -189,14 +192,15 @@ export const ShowMediaBoxModal: FC = () => {
   if (!showModal) return null;
   return (
     <div className="text-textColor">
-      <MediaBox setMedia={callBack!} closeModal={closeModal} />
+      <MediaBox setMedia={callBack!} closeModal={closeModal} type={type} />
     </div>
   );
 };
 export const showMediaBox = (
-  callback: (params: { id: string; path: string }) => void
+  callback: (params: { id: string; path: string }) => void,
+  type?: 'image' | 'video'
 ) => {
-  showModalEmitter.emit('show-modal', callback);
+  showModalEmitter.emit('show-modal', callback, type);
 };
 const CHUNK_SIZE = 1024 * 1024;
 const MAX_UPLOAD_SIZE = 1024 * 1024 * 1024; // 1 GB
