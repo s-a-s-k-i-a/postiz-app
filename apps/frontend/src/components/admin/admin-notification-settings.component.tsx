@@ -32,7 +32,7 @@ const useNotificationSettings = (enabled: boolean) => {
 export const AdminNotificationSettingsComponent = () => {
   const fetch = useFetch();
   const toaster = useToaster();
-  const { user } = useUser();
+  const user = useUser();
   const isSuperAdmin = Boolean(user?.isSuperAdmin);
   const { data, error, isLoading, mutate } =
     useNotificationSettings(isSuperAdmin);
