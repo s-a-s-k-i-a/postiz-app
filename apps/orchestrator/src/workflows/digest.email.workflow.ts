@@ -7,6 +7,7 @@ import {
 } from '@temporalio/workflow';
 import { Email, emailSignal } from '@gitroom/orchestrator/signals/email.signal';
 import { EmailActivity } from '@gitroom/orchestrator/activities/email.activity';
+import { EMAIL_DIGEST_DEFAULTS } from '@gitroom/helpers/utils/email.digest.config';
 
 const { getUserOrgs, sendEmailAsync } = proxyActivities<EmailActivity>({
   startToCloseTimeout: '10 minute',
@@ -22,17 +23,26 @@ const { getUserOrgs, sendEmailAsync } = proxyActivities<EmailActivity>({
 export async function digestEmailWorkflow({
   organizationId,
   queue = [],
+  digestIntervalMinutes = EMAIL_DIGEST_DEFAULTS.DEFAULT_DIGEST_INTERVAL_MINUTES,
 }: {
   organizationId: string;
   queue?: Email[];
+  digestIntervalMinutes?: number;
 }) {
+  const safeIntervalMinutes =
+    Number.isInteger(digestIntervalMinutes) &&
+    digestIntervalMinutes >= EMAIL_DIGEST_DEFAULTS.MIN_DIGEST_INTERVAL_MINUTES &&
+    digestIntervalMinutes <= EMAIL_DIGEST_DEFAULTS.MAX_DIGEST_INTERVAL_MINUTES
+      ? digestIntervalMinutes
+      : EMAIL_DIGEST_DEFAULTS.DEFAULT_DIGEST_INTERVAL_MINUTES;
+
   setHandler(emailSignal, (data) => {
     queue.push(...data);
   });
 
   while (true) {
     await condition(() => queue.length > 0);
-    await sleep(3600000);
+    await sleep(safeIntervalMinutes * 60_000);
 
     // Take a snapshot batch and immediately clear queue.
     const batch = queue.splice(0, queue.length);
@@ -66,6 +76,7 @@ export async function digestEmailWorkflow({
     return await continueAsNew({
       organizationId,
       queue,
+      digestIntervalMinutes: safeIntervalMinutes,
     });
   }
 }

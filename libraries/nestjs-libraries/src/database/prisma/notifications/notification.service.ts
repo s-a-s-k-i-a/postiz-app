@@ -5,6 +5,11 @@ import { OrganizationRepository } from '@gitroom/nestjs-libraries/database/prism
 import { TemporalService } from 'nestjs-temporal-core';
 import { TypedSearchAttributes } from '@temporalio/common';
 import { organizationId } from '@gitroom/nestjs-libraries/temporal/temporal.search.attribute';
+import {
+  emailDigestWorkflowId,
+  resolveEmailDigestIntervalMinutes,
+  resolveImmediateFailureEmails,
+} from '@gitroom/helpers/utils/email.digest.config';
 
 export type NotificationType = 'success' | 'fail' | 'info';
 
@@ -52,11 +57,20 @@ export class NotificationService {
     }
 
     if (digest) {
+      // Failure notifications are operational alerts: when configured,
+      // deliver them right away instead of holding them for the digest.
+      if (type === 'fail' && resolveImmediateFailureEmails()) {
+        await this.sendEmailsToOrg(orgId, subject, message, type);
+        return;
+      }
+
+      const digestIntervalMinutes = resolveEmailDigestIntervalMinutes();
+
       try {
         await this._temporalService.client
           .getRawClient()
           ?.workflow.signalWithStart('digestEmailWorkflow', {
-            workflowId: 'digest_email_workflow_' + orgId,
+            workflowId: emailDigestWorkflowId(orgId, digestIntervalMinutes),
             signal: 'email',
             signalArgs: [
               [
@@ -69,7 +83,7 @@ export class NotificationService {
             ],
             taskQueue: 'main',
             workflowIdConflictPolicy: 'USE_EXISTING',
-            args: [{ organizationId: orgId }],
+            args: [{ organizationId: orgId, digestIntervalMinutes }],
             typedSearchAttributes: new TypedSearchAttributes([
               {
                 key: organizationId,
