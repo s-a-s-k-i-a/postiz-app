@@ -5,11 +5,8 @@ import { OrganizationRepository } from '@gitroom/nestjs-libraries/database/prism
 import { TemporalService } from 'nestjs-temporal-core';
 import { TypedSearchAttributes } from '@temporalio/common';
 import { organizationId } from '@gitroom/nestjs-libraries/temporal/temporal.search.attribute';
-import {
-  emailDigestWorkflowId,
-  resolveEmailDigestIntervalMinutes,
-  resolveImmediateFailureEmails,
-} from '@gitroom/helpers/utils/email.digest.config';
+import { emailDigestWorkflowId } from '@gitroom/helpers/utils/email.digest.config';
+import { SystemSettingsService } from '@gitroom/nestjs-libraries/database/prisma/system-settings/system-settings.service';
 
 export type NotificationType = 'success' | 'fail' | 'info';
 
@@ -19,7 +16,8 @@ export class NotificationService {
     private _notificationRepository: NotificationsRepository,
     private _emailService: EmailService,
     private _organizationRepository: OrganizationRepository,
-    private _temporalService: TemporalService
+    private _temporalService: TemporalService,
+    private _systemSettingsService: SystemSettingsService
   ) {}
 
   getMainPageCount(organizationId: string, userId: string) {
@@ -57,14 +55,17 @@ export class NotificationService {
     }
 
     if (digest) {
+      const settings =
+        await this._systemSettingsService.getNotificationSettings();
+
       // Failure notifications are operational alerts: when configured,
       // deliver them right away instead of holding them for the digest.
-      if (type === 'fail' && resolveImmediateFailureEmails()) {
+      if (type === 'fail' && settings.emailFailureNotificationsImmediate) {
         await this.sendEmailsToOrg(orgId, subject, message, type);
         return;
       }
 
-      const digestIntervalMinutes = resolveEmailDigestIntervalMinutes();
+      const digestIntervalMinutes = settings.emailDigestIntervalMinutes;
 
       try {
         await this._temporalService.client

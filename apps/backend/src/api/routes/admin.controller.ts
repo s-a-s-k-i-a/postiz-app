@@ -1,7 +1,9 @@
 import {
+  Body,
   Controller,
   Get,
   HttpException,
+  Put,
   Query,
 } from '@nestjs/common';
 import { GetUserFromRequest } from '@gitroom/nestjs-libraries/user/user.from.request';
@@ -9,6 +11,8 @@ import { User } from '@prisma/client';
 import { ApiTags } from '@nestjs/swagger';
 import { ErrorsService } from '@gitroom/nestjs-libraries/database/prisma/errors/errors.service';
 import { AdminStatsService } from '@gitroom/nestjs-libraries/database/prisma/admin-stats/admin-stats.service';
+import { SystemSettingsService } from '@gitroom/nestjs-libraries/database/prisma/system-settings/system-settings.service';
+import { UpdateNotificationSettingsDto } from '@gitroom/nestjs-libraries/dtos/admin/update-notification-settings.dto';
 import dayjs from 'dayjs';
 
 @ApiTags('Admin')
@@ -16,7 +20,8 @@ import dayjs from 'dayjs';
 export class AdminController {
   constructor(
     private _errorsService: ErrorsService,
-    private _adminStatsService: AdminStatsService
+    private _adminStatsService: AdminStatsService,
+    private _systemSettingsService: SystemSettingsService
   ) {}
 
   private assertSuperAdmin(user: User) {
@@ -48,6 +53,21 @@ export class AdminController {
   async listPlatforms(@GetUserFromRequest() user: User) {
     this.assertSuperAdmin(user);
     return this._errorsService.listPlatforms();
+  }
+
+  @Get('/notification-settings')
+  async getNotificationSettings(@GetUserFromRequest() user: User) {
+    this.assertSuperAdmin(user);
+    return this._systemSettingsService.getNotificationSettings();
+  }
+
+  @Put('/notification-settings')
+  async updateNotificationSettings(
+    @GetUserFromRequest() user: User,
+    @Body() body: UpdateNotificationSettingsDto
+  ) {
+    this.assertSuperAdmin(user);
+    return this._systemSettingsService.updateNotificationSettings(body);
   }
 
   @Get('/stats')
