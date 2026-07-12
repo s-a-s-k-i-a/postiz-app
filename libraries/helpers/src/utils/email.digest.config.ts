@@ -2,32 +2,6 @@ const DEFAULT_DIGEST_INTERVAL_MINUTES = 60;
 const MIN_DIGEST_INTERVAL_MINUTES = 1;
 const MAX_DIGEST_INTERVAL_MINUTES = 1440;
 
-export function resolveEmailDigestIntervalMinutes(
-  raw: string | undefined = process.env.EMAIL_DIGEST_INTERVAL_MINUTES
-): number {
-  if (typeof raw !== 'string' || raw.trim() === '') {
-    return DEFAULT_DIGEST_INTERVAL_MINUTES;
-  }
-
-  const parsed = Number(raw.trim());
-  if (
-    !Number.isFinite(parsed) ||
-    !Number.isInteger(parsed) ||
-    parsed < MIN_DIGEST_INTERVAL_MINUTES ||
-    parsed > MAX_DIGEST_INTERVAL_MINUTES
-  ) {
-    return DEFAULT_DIGEST_INTERVAL_MINUTES;
-  }
-
-  return parsed;
-}
-
-export function resolveImmediateFailureEmails(
-  raw: string | undefined = process.env.EMAIL_FAILURE_NOTIFICATIONS_IMMEDIATE
-): boolean {
-  return typeof raw === 'string' && raw.trim().toLowerCase() === 'true';
-}
-
 export function emailDigestWorkflowId(
   organizationId: string,
   intervalMinutes: number
