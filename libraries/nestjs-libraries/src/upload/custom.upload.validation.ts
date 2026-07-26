@@ -3,6 +3,10 @@ import {
   Injectable,
   PipeTransform,
 } from '@nestjs/common';
+import {
+  MEDIA_UPLOAD_LIMITS,
+  getUploadLimitForMime,
+} from '@gitroom/helpers/utils/media.upload.limits';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { fromBuffer } = require('file-type');
 
@@ -57,12 +61,14 @@ export class CustomFileValidationPipe implements PipeTransform {
 
 }
 
+export const MEDIA_UPLOAD_MULTER_OPTIONS = Object.freeze({
+  limits: Object.freeze({ fileSize: MEDIA_UPLOAD_LIMITS.video }),
+});
+
 export function getMaxSize(mimeType: string): number {
-  if (mimeType.startsWith('image/')) {
-    return 10 * 1024 * 1024; // 10 MB
-  } else if (mimeType.startsWith('video/')) {
-    return 1024 * 1024 * 1024; // 1 GB
-  } else {
+  try {
+    return getUploadLimitForMime(mimeType);
+  } catch {
     throw new BadRequestException('Unsupported file type.');
   }
 }

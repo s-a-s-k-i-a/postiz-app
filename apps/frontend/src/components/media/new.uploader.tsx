@@ -13,6 +13,11 @@ import { useT } from '@gitroom/react/translation/get.transation.service.client';
 import { useToaster } from '@gitroom/react/toaster/toaster';
 import { useLaunchStore } from '@gitroom/frontend/components/new-launch/store';
 import { uniqBy } from 'lodash';
+import {
+  MEDIA_UPLOAD_LIMITS,
+  UploadSessionTracker,
+  getUploadSizeError,
+} from '@gitroom/helpers/utils/media.upload.limits';
 
 export class CompressionWrapper<M = any, B = any> extends Compressor<any, any> {
   override async prepareUpload(fileIDs: string[]) {
@@ -51,13 +56,28 @@ export function useUppyUploader(props: {
   return useMemo(() => {
     // Track file order to maintain original sequence after upload
     let fileOrderIndex = 0;
+    const uploadSession = new UploadSessionTracker();
 
     const uppy2 = new Uppy({
       autoProceed: true,
       restrictions: {
         // maxNumberOfFiles: 5,
         // allowedFileTypes: allowedFileTypes.split(','),
-        maxFileSize: 1000000000, // Default 1GB, but we'll override with custom validation
+        maxFileSize: MEDIA_UPLOAD_LIMITS.video,
+      },
+      onBeforeFileAdded: (currentFile, files) => {
+        if (Object.prototype.hasOwnProperty.call(files, currentFile.id)) {
+          return false;
+        }
+        const sizeError = uploadSession.tryAdd(
+          currentFile.id,
+          currentFile.size ?? 0
+        );
+        if (!sizeError) {
+          return true;
+        }
+        toast.show(sizeError, 'warning');
+        return false;
       },
     });
 
@@ -129,35 +149,14 @@ export function useUppyUploader(props: {
 
         for (const file of files) {
           if (fileIDs.includes(file.id)) {
-            const isImage = file.type?.startsWith('image/');
-            const isVideo = file.type?.startsWith('video/');
+            const sizeError = getUploadSizeError(file.type ?? '', file.size);
 
-            const maxImageSize = 30 * 1024 * 1024; // 30MB
-            const maxVideoSize = 1000 * 1024 * 1024; // 1GB
-
-            if (isImage && file.size > maxImageSize) {
-              const error = new Error(
-                `Image file "${file.name}" is too large. Maximum size allowed is 30MB.`
-              );
+            if (sizeError) {
+              const error = new Error(sizeError);
               uppy2.log(error.message, 'error');
               uppy2.info(error.message, 'error', 5000);
-              toast.show(
-                `Image file is too large. Maximum size allowed is 30MB.`
-              );
-              uppy2.removeFile(file.id); // Remove file from queue
-              return reject(error);
-            }
-
-            if (isVideo && file.size > maxVideoSize) {
-              const error = new Error(
-                `Video file "${file.name}" is too large. Maximum size allowed is 1GB.`
-              );
-              uppy2.log(error.message, 'error');
-              uppy2.info(error.message, 'error', 5000);
-              toast.show(
-                `Video file is too large. Maximum size allowed is 1GB.`
-              );
-              uppy2.removeFile(file.id); // Remove file from queue
+              toast.show(error.message, 'warning');
+              uppy2.removeFile(file.id);
               return reject(error);
             }
           }
@@ -192,11 +191,25 @@ export function useUppyUploader(props: {
         // Add more fields as needed
       });
     });
-    uppy2.on('error', (result) => {
-      uppy2.clear();
-      setLocked(false);
-      props.onEnd();
-      fileOrderIndex = 0;
+    uppy2.on('error', (_result, file) => {
+      if (file) {
+        uppy2.removeFile(file.id);
+      }
+      if (uppy2.getFiles().length === 0) {
+        setLocked(false);
+        props.onEnd();
+        fileOrderIndex = 0;
+      }
+    });
+    uppy2.on('upload-error', (file) => {
+      if (file) {
+        uppy2.removeFile(file.id);
+      }
+      if (uppy2.getFiles().length === 0) {
+        setLocked(false);
+        props.onEnd();
+        fileOrderIndex = 0;
+      }
     });
     uppy2.on('upload-start', () => {
       props.onStart();
@@ -268,7 +281,11 @@ export function useUppyUploader(props: {
       fileOrderIndex = 0;
       onUploadSuccess(sortedSuccessful.map((p) => p.response.body.saved));
     });
+    uppy2.on('file-removed', (file) => {
+      uploadSession.remove(file.id);
+    });
     uppy2.on('upload-success', (file, response) => {
+      uploadSession.markSuccessful(file.id);
       // @ts-ignore
       uppy2.setFileState(file.id, {
         // @ts-ignore

@@ -2,7 +2,10 @@ import { timer } from '@gitroom/helpers/utils/timer';
 import { Integration } from '@prisma/client';
 import { ApplicationFailure } from '@temporalio/activity';
 import { readOrFetch } from '@gitroom/helpers/utils/read.or.fetch';
-import { getSsrfSafeDispatcher } from '@gitroom/nestjs-libraries/dtos/webhooks/ssrf.safe.dispatcher';
+import {
+  getSsrfSafeDispatcher,
+  ssrfSafeDispatcher,
+} from '@gitroom/nestjs-libraries/dtos/webhooks/ssrf.safe.dispatcher';
 import sharp from 'sharp';
 
 export type ValidityMedia = {
@@ -117,6 +120,56 @@ export abstract class SocialAbstract {
       return value.toLowerCase() === 'true';
     }
     return value || false;
+  }
+
+  /** Reads a stored media object's byte size without downloading its body. */
+  protected async getMediaSizeBytes(path: string): Promise<number> {
+    const frontendUrl = process.env.FRONTEND_URL;
+    if (!frontendUrl) {
+      throw new Error('Media storage origin is not configured.');
+    }
+    const parsed = new URL(path, frontendUrl);
+    if (parsed.protocol !== 'https:') {
+      throw new Error('Media URL must use HTTPS.');
+    }
+    const trustedOrigins = [frontendUrl, process.env.CLOUDFLARE_BUCKET_URL]
+      .filter(Boolean)
+      .map((value) => new URL(value!).origin);
+    if (!trustedOrigins.includes(parsed.origin)) {
+      throw new Error('Media URL is outside the configured storage origins.');
+    }
+    const frontendOrigin = new URL(frontendUrl).origin;
+    const uploadDirectory = (
+      process.env.NEXT_PUBLIC_UPLOAD_STATIC_DIRECTORY || 'uploads'
+    ).replace(/^\/+|\/+$/g, '');
+    if (
+      parsed.origin === frontendOrigin &&
+      !parsed.pathname.startsWith(`/${uploadDirectory}/`)
+    ) {
+      throw new Error('Media URL is outside the configured storage path.');
+    }
+    const response = await fetch(parsed, {
+      method: 'HEAD',
+      redirect: 'error',
+      signal: AbortSignal.timeout(10_000),
+      // @ts-ignore - undici-only option; DNS-pins and blocks internal IPs
+      dispatcher: ssrfSafeDispatcher,
+    });
+    if (!response.ok) {
+      throw new Error(`Media metadata request failed with ${response.status}.`);
+    }
+    const contentLengthHeader = response.headers.get('content-length');
+    if (
+      !contentLengthHeader ||
+      !/^[1-9]\d*$/.test(contentLengthHeader)
+    ) {
+      throw new Error('Media metadata is missing a valid Content-Length.');
+    }
+    const contentLength = Number(contentLengthHeader);
+    if (!Number.isSafeInteger(contentLength)) {
+      throw new Error('Media metadata is missing a valid Content-Length.');
+    }
+    return contentLength;
   }
 
   /** Reads the pixel dimensions of an image via sharp (works for http or local paths). */
