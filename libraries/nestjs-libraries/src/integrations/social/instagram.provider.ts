@@ -16,7 +16,10 @@ import { InstagramDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-set
 import { Integration } from '@prisma/client';
 import { Rules } from '@gitroom/nestjs-libraries/chat/rules.description.decorator';
 import { Tool } from '@gitroom/nestjs-libraries/integrations/tool.decorator';
-import { hasExtension } from '@gitroom/helpers/utils/has.extension';
+import {
+  MEDIA_UPLOAD_LIMITS,
+  hasMediaExtension,
+} from '@gitroom/helpers/utils/media.upload.limits';
 
 @Rules(
   "Instagram should have at least one attachment, if it's a story, it can have only one picture"
@@ -55,12 +58,56 @@ export class InstagramProvider
     if (firstPost.length > 10) {
       return 'Instagram carousel only supports up to 10 media attachments';
     }
+    const unsupportedImage = firstPost.find(
+      ({ path }) =>
+        !hasMediaExtension(path, 'mp4') &&
+        !hasMediaExtension(path, 'jpg') &&
+        !hasMediaExtension(path, 'jpeg')
+    );
+    if (unsupportedImage) {
+      return 'Instagram image posts require JPEG files; use an MP4 Reel for animation.';
+    }
+    for (const { path } of firstPost) {
+      if (hasMediaExtension(path, 'mp4')) {
+        continue;
+      }
+      let size: number;
+      try {
+        size = await this.getMediaSizeBytes(path);
+      } catch {
+        return 'Could not verify the Instagram JPEG file size. Re-upload the media and try again.';
+      }
+      if (size > MEDIA_UPLOAD_LIMITS.instagramImage) {
+        return 'Instagram JPEG images must not exceed 8 MiB.';
+      }
+    }
+    for (const { path } of firstPost) {
+      if (!hasMediaExtension(path, 'mp4')) {
+        continue;
+      }
+      const isStory = settings?.post_type === 'story';
+      const maxSize = isStory
+        ? MEDIA_UPLOAD_LIMITS.instagramStoryVideo
+        : MEDIA_UPLOAD_LIMITS.instagramReel;
+      const videoType = isStory ? 'Story' : 'Reel';
+      let size: number;
+      try {
+        size = await this.getMediaSizeBytes(path);
+      } catch {
+        return `Could not verify the Instagram ${videoType} video size. Re-upload the media and try again.`;
+      }
+      if (size > maxSize) {
+        return `Instagram ${videoType} videos must not exceed ${
+          maxSize / (1024 * 1024)
+        } MiB.`;
+      }
+    }
     if (this.assetBoolean(settings?.is_trial_reel)) {
       if ((firstPost?.length ?? 0) > 1) {
         return 'Trial Reels can only have one video';
       }
-      const hasVideo = firstPost?.some(
-        (f) => (f?.path?.indexOf?.('mp4') ?? -1) > -1
+      const hasVideo = firstPost?.some((f) =>
+        hasMediaExtension(f?.path, 'mp4')
       );
       if (!hasVideo) {
         return 'Trial Reels must be a video';
@@ -73,8 +120,8 @@ export class InstagramProvider
       if ((firstPost?.length ?? 0) > 1) {
         return 'Audio can only be added to a single video Reel';
       }
-      const hasVideo = firstPost?.some(
-        (f) => (f?.path?.indexOf?.('mp4') ?? -1) > -1
+      const hasVideo = firstPost?.some((f) =>
+        hasMediaExtension(f?.path, 'mp4')
       );
       if (!hasVideo) {
         return 'Audio can only be added to a video Reel';
@@ -353,7 +400,7 @@ export class InstagramProvider
       return {
         type: 'retry' as const,
         value: 'Could not upload your media',
-      }
+      };
     }
 
     if (body.indexOf('2207077') > -1) {
@@ -366,8 +413,9 @@ export class InstagramProvider
     if (body.indexOf('too little or too many attachments') > -1) {
       return {
         type: 'bad-body' as const,
-        value: 'Instagram carousel should have between 2 and 10 media attachments',
-      }
+        value:
+          'Instagram carousel should have between 2 and 10 media attachments',
+      };
     }
 
     if (body.indexOf('2207027') > -1) {
@@ -616,7 +664,7 @@ export class InstagramProvider
           (firstPost?.media?.length || 0) > 1 && !isStory
             ? `&is_carousel_item=true`
             : ``;
-        const mediaType = hasExtension(m.path, 'mp4')
+        const mediaType = hasMediaExtension(m.path, 'mp4')
           ? firstPost?.media?.length === 1
             ? isStory
               ? `video_url=${m.path}&media_type=STORIES`
@@ -655,7 +703,7 @@ export class InstagramProvider
           type === 'graph.facebook.com' &&
           !isStory &&
           firstPost?.media?.length === 1 &&
-          hasExtension(m.path, 'mp4')
+          hasMediaExtension(m.path, 'mp4')
             ? `&audio_configuration=${encodeURIComponent(
                 JSON.stringify({
                   audio_id: firstPost.settings.audio.id,

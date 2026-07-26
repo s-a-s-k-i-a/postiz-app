@@ -8,7 +8,10 @@ import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
 import sharp from 'sharp';
 import { lookup } from 'mime-types';
 import { readOrFetch } from '@gitroom/helpers/utils/read.or.fetch';
-import { hasExtension } from '@gitroom/helpers/utils/has.extension';
+import {
+  MEDIA_UPLOAD_LIMITS,
+  hasMediaExtension,
+} from '@gitroom/helpers/utils/media.upload.limits';
 import { timer } from '@gitroom/helpers/utils/timer';
 import {
   BadBody,
@@ -52,16 +55,31 @@ export class LinkedinProvider extends SocialAbstract implements SocialProvider {
     if (
       this.assetBoolean(vals?.post_as_images_carousel) &&
       ((firstPost?.length ?? 0) < 2 ||
-        firstPost?.some((p) => (p?.path?.indexOf?.('mp4') ?? -1) > -1))
+        firstPost?.some((p) => hasMediaExtension(p?.path, 'mp4')))
     ) {
       return 'Carousel can only be created with 2 or more images and no videos.';
     }
 
     if (
       (firstPost?.length ?? 0) > 1 &&
-      firstPost?.some((p) => (p?.path?.indexOf?.('mp4') ?? -1) > -1)
+      firstPost?.some((p) => hasMediaExtension(p?.path, 'mp4'))
     ) {
       return 'Can have maximum 1 media when selecting a video.';
+    }
+    const video = firstPost?.find(({ path }) => hasMediaExtension(path, 'mp4'));
+    if (video) {
+      let size: number;
+      try {
+        size = await this.getMediaSizeBytes(video.path);
+      } catch {
+        return 'Could not verify the LinkedIn MP4 file size. Re-upload the media and try again.';
+      }
+      if (size < MEDIA_UPLOAD_LIMITS.linkedinVideoMinimum) {
+        return 'LinkedIn MP4 files must be at least 75 KiB.';
+      }
+      if (size > MEDIA_UPLOAD_LIMITS.linkedinVideoTemporary) {
+        return 'LinkedIn MP4 files must stay below 2 MiB until multipart upload issue #8 is fixed.';
+      }
     }
     if (restPosts?.some((p) => (p?.length ?? 0) > 0)) {
       return 'Comments can only contain text.';
@@ -278,8 +296,8 @@ export class LinkedinProvider extends SocialAbstract implements SocialProvider {
     type = 'personal' as 'company' | 'personal'
   ) {
     // Determine the appropriate endpoint based on file type
-    const isVideo = hasExtension(fileName, 'mp4');
-    const isPdf = hasExtension(fileName, 'pdf');
+    const isVideo = hasMediaExtension(fileName, 'mp4');
+    const isPdf = hasMediaExtension(fileName, 'pdf');
 
     let endpoint: string;
     if (isVideo) {
@@ -632,7 +650,7 @@ export class LinkedinProvider extends SocialAbstract implements SocialProvider {
   }
 
   private async prepareMediaBuffer(mediaUrl: string): Promise<Buffer> {
-    const isVideo = hasExtension(mediaUrl, 'mp4');
+    const isVideo = hasMediaExtension(mediaUrl, 'mp4');
     const isGif = lookup(mediaUrl) === 'image/gif';
 
     // GIFs and videos pass through untouched (sharp would break animation).

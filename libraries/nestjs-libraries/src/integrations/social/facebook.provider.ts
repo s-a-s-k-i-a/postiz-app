@@ -17,7 +17,10 @@ import {
 } from '@gitroom/nestjs-libraries/dtos/posts/providers-settings/facebook.dto';
 import { DribbbleDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-settings/dribbble.dto';
 import { Integration } from '@prisma/client';
-import { hasExtension } from '@gitroom/helpers/utils/has.extension';
+import {
+  MEDIA_UPLOAD_LIMITS,
+  hasMediaExtension,
+} from '@gitroom/helpers/utils/media.upload.limits';
 import { timer } from '@gitroom/helpers/utils/timer';
 import { Rules } from '@gitroom/nestjs-libraries/chat/rules.description.decorator';
 
@@ -44,12 +47,27 @@ export class FacebookProvider extends SocialAbstract implements SocialProvider {
   dto = FacebookDto;
 
   override async checkValidity(
-    [firstPost]: Array<ValidityMedia[]>,
+    posts: Array<ValidityMedia[]>,
     settings: any
   ): Promise<string | true> {
+    const [firstPost] = posts;
     if (settings?.post_type === 'story') {
       if (!firstPost?.length) {
         return 'Story should have at least one media';
+      }
+    }
+    for (const { path } of posts.flat()) {
+      if (hasMediaExtension(path, 'mp4')) {
+        continue;
+      }
+      let size: number;
+      try {
+        size = await this.getMediaSizeBytes(path);
+      } catch {
+        return 'Could not verify the Facebook photo/GIF file size. Re-upload the media and try again.';
+      }
+      if (size > MEDIA_UPLOAD_LIMITS.facebookPhoto) {
+        return 'Facebook photos and GIFs must not exceed 10 MiB.';
       }
     }
     return true;
@@ -113,7 +131,7 @@ export class FacebookProvider extends SocialAbstract implements SocialProvider {
       return {
         type: 'bad-body' as const,
         value: 'Invalid file',
-      }
+      };
     }
 
     if (body.indexOf('1404102') > -1) {
@@ -470,7 +488,7 @@ export class FacebookProvider extends SocialAbstract implements SocialProvider {
     if (isStory) {
       let lastPostId = '';
       for (const media of firstPost?.media || []) {
-        const isVideoStory = hasExtension(media.path, 'mp4');
+        const isVideoStory = hasMediaExtension(media.path, 'mp4');
         if (isVideoStory) {
           const { video_id, upload_url } = await (
             await this.fetch(
@@ -565,7 +583,7 @@ export class FacebookProvider extends SocialAbstract implements SocialProvider {
 
       finalId = lastPostId;
       finalUrl = `https://www.facebook.com/stories/${lastPostId}`;
-    } else if (hasExtension(firstPost?.media?.[0]?.path, 'mp4')) {
+    } else if (hasMediaExtension(firstPost?.media?.[0]?.path, 'mp4')) {
       const {
         id: videoId,
         permalink_url,

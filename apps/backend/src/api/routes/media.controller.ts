@@ -19,7 +19,10 @@ import { MediaService } from '@gitroom/nestjs-libraries/database/prisma/media/me
 import { ApiTags } from '@nestjs/swagger';
 import handleR2Upload from '@gitroom/nestjs-libraries/upload/r2.uploader';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { CustomFileValidationPipe } from '@gitroom/nestjs-libraries/upload/custom.upload.validation';
+import {
+  CustomFileValidationPipe,
+  MEDIA_UPLOAD_MULTER_OPTIONS,
+} from '@gitroom/nestjs-libraries/upload/custom.upload.validation';
 import { SubscriptionService } from '@gitroom/nestjs-libraries/database/prisma/subscriptions/subscription.service';
 import { UploadFactory } from '@gitroom/nestjs-libraries/upload/upload.factory';
 import { SaveMediaInformationDto } from '@gitroom/nestjs-libraries/dtos/media/save.media.information.dto';
@@ -85,7 +88,7 @@ export class MediaController {
   }
 
   @Post('/upload-server')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file', MEDIA_UPLOAD_MULTER_OPTIONS))
   @UsePipes(new CustomFileValidationPipe())
   async uploadServer(
     @GetOrgFromRequest() org: Organization,
@@ -128,7 +131,7 @@ export class MediaController {
   }
 
   @Post('/upload-simple')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file', MEDIA_UPLOAD_MULTER_OPTIONS))
   @UsePipes(new CustomFileValidationPipe())
   async uploadSimple(
     @GetOrgFromRequest() org: Organization,

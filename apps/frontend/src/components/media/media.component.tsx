@@ -53,6 +53,7 @@ import { useLaunchStore } from '@gitroom/frontend/components/new-launch/store';
 import { useShallow } from 'zustand/react/shallow';
 import { LoadingComponent } from '@gitroom/frontend/components/layout/loading';
 import { useDebounce } from 'use-debounce';
+import { MEDIA_UPLOAD_LIMITS } from '@gitroom/helpers/utils/media.upload.limits';
 const Polonto = dynamic(
   () => import('@gitroom/frontend/components/launches/polonto')
 );
@@ -202,8 +203,7 @@ export const showMediaBox = (
 ) => {
   showModalEmitter.emit('show-modal', callback, type);
 };
-const CHUNK_SIZE = 1024 * 1024;
-const MAX_UPLOAD_SIZE = 1024 * 1024 * 1024; // 1 GB
+const MAX_UPLOAD_SIZE = MEDIA_UPLOAD_LIMITS.session;
 export const MediaBox: FC<{
   setMedia: (params: { id: string; path: string }[]) => void;
   standalone?: boolean;
@@ -289,7 +289,7 @@ export const MediaBox: FC<{
         toaster.show(
           t(
             'upload_size_limit_exceeded',
-            'Upload size limit exceeded. Maximum 1 GB per upload session.'
+            'Upload size limit exceeded. Maximum 500 MiB per upload session.'
           ),
           'warning'
         );
@@ -332,7 +332,7 @@ export const MediaBox: FC<{
         toaster.show(
           t(
             'upload_size_limit_exceeded',
-            'Upload size limit exceeded. Maximum 1 GB per upload session.'
+            'Upload size limit exceeded. Maximum 500 MiB per upload session.'
           ),
           'warning'
         );

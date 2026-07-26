@@ -14,6 +14,7 @@ import {
 } from '@nestjs/common';
 import {
   CustomFileValidationPipe,
+  MEDIA_UPLOAD_MULTER_OPTIONS,
   getMaxSize,
 } from '@gitroom/nestjs-libraries/upload/custom.upload.validation';
 import { ApiTags } from '@nestjs/swagger';
@@ -78,7 +79,7 @@ export class PublicIntegrationsController {
   ) {}
 
   @Post('/upload')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file', MEDIA_UPLOAD_MULTER_OPTIONS))
   @UsePipes(new CustomFileValidationPipe())
   async uploadSimple(
     @GetOrgFromRequest() org: Organization,
