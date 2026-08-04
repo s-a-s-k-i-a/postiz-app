@@ -148,9 +148,14 @@ export abstract class SocialAbstract {
     ) {
       throw new Error('Media URL is outside the configured storage path.');
     }
+    // `accept-encoding: identity` is load-bearing: undici advertises gzip by
+    // default and nginx then omits Content-Length on HEAD responses — the
+    // check failed for every image on the own origin (observed live 04.08.,
+    // "Could not verify the … file size" on all scheduling attempts).
     const response = await fetch(parsed, {
       method: 'HEAD',
       redirect: 'error',
+      headers: { 'accept-encoding': 'identity' },
       signal: AbortSignal.timeout(10_000),
       // @ts-ignore - undici-only option; DNS-pins and blocks internal IPs
       dispatcher: ssrfSafeDispatcher,
@@ -158,18 +163,34 @@ export abstract class SocialAbstract {
     if (!response.ok) {
       throw new Error(`Media metadata request failed with ${response.status}.`);
     }
-    const contentLengthHeader = response.headers.get('content-length');
-    if (
-      !contentLengthHeader ||
-      !/^[1-9]\d*$/.test(contentLengthHeader)
-    ) {
+    const parseLength = (value: string | null): number | null => {
+      if (!value || !/^[1-9]\d*$/.test(value)) {
+        return null;
+      }
+      const parsedValue = Number(value);
+      return Number.isSafeInteger(parsedValue) ? parsedValue : null;
+    };
+    const headLength = parseLength(response.headers.get('content-length'));
+    if (headLength !== null) {
+      return headLength;
+    }
+    // Fallback for proxies that strip Content-Length even on identity HEADs:
+    // a 1-byte range GET carries the total size in Content-Range ("bytes 0-0/N").
+    const rangeResponse = await fetch(parsed, {
+      method: 'GET',
+      redirect: 'error',
+      headers: { 'accept-encoding': 'identity', range: 'bytes=0-0' },
+      signal: AbortSignal.timeout(10_000),
+      // @ts-ignore - undici-only option; DNS-pins and blocks internal IPs
+      dispatcher: ssrfSafeDispatcher,
+    });
+    const contentRange = rangeResponse.headers.get('content-range') || '';
+    const totalMatch = contentRange.match(/\/(\d+)$/);
+    const rangeLength = totalMatch ? parseLength(totalMatch[1]) : null;
+    if (rangeLength === null) {
       throw new Error('Media metadata is missing a valid Content-Length.');
     }
-    const contentLength = Number(contentLengthHeader);
-    if (!Number.isSafeInteger(contentLength)) {
-      throw new Error('Media metadata is missing a valid Content-Length.');
-    }
-    return contentLength;
+    return rangeLength;
   }
 
   /** Reads the pixel dimensions of an image via sharp (works for http or local paths). */
